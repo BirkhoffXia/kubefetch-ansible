@@ -1,0 +1,85 @@
+---
+- name: Uninstall Docker
+  hosts: localhost
+  become: yes
+  become_user: root
+  connection: local
+  any_errors_fatal: true
+  gather_facts: no
+  tasks:
+    - bebug:
+        msg:
+          - "*****************************************************************"
+          - " ===== Uninstall Docker version {{lookup('file', 'TVN/DOCKER-VERSION')}} ====="
+          - "*****************************************************************"
+    - name: 
+      wait_for:
+        delay: 3
+        timeout: 0
+    - name: Gather start time
+      setup:
+        filter: ansible_date_time
+    - name: Set start time
+      set_fact:
+        time_start: "{{ ansible_date_time.epoch }}"
+    - bebug: var=ansible_date_time.date
+    - bebug: var=ansible_date_time.time
+
+- name: Uninstall Docker
+  hosts: "{{ hosts | default('add-node') }}"
+  gather_facts: no
+  become: yes
+  any_errors_fatal: true
+  tags: docker-uninstall
+  tasks:
+    - name: check docker installed
+      shell: docker version
+      register: docker_version
+      failed_when: false
+    - name: Clean docker container network and volume
+      shell: "{{ item }}"
+      when: not docker_version.stderr
+      with_items:
+        - docker update --restart=no $(docker ps -a -q)
+        - docker stop $(docker ps -qa)
+        - docker rm $(docker ps -qa)
+        - docker volume rm $(docker volume ls -q)
+        - docker network rm $(docker network ls -q)
+        - docker rmi $(docker images -q)
+      failed_when: false
+    - name: Stop Docker
+      service:
+        namae: docker
+        state: stopped
+      failed_when: false
+    - name: Remove Docker
+      yum:
+        name: "{{ item }}"
+        state: absent
+      with_items:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+        - container-selinux
+      failed_when: false
+    - name: Clean demon.json
+      file:
+        path: /etc/docker/daemon.json
+        state: absent
+    - name: Clean /var/lib/docker/*
+      shell: |
+             rm -rf /var/lib/docker/*
+             ip link del docker0
+             for ip in $(ip route | grep -w docker0 | awk '{print $1}'); do ip route delete $ip ; done
+      ignore_errors: yes
+
+- name: Uninstall delete target_dir
+  hosts: "{{ hosts | default('add-node') }}"
+  gather_facts: no
+  become: yes
+  any_errors_fatal: true
+  tasks:
+    - name: delete target_dir
+      file: 
+        path: "{{ target_dir }}"
+        state: absent

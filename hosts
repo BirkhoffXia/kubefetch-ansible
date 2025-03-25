@@ -1,0 +1,21 @@
+[kubefetch]
+#master
+
+[add-node]
+#node1
+
+[pass-api]
+#192.168.1.1
+
+[all:vars]
+#docker_ce_cidr
+docker_cidr = 172.17.0.1/16
+
+#[pod_cidr]
+podcidr = 172.90.0.0/16
+
+#service_cidr
+servicecidr = 10.96.0.0/12
+
+#target_dir
+target_dir = /opt/pass

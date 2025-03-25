@@ -1,0 +1,58 @@
+- name: Welcome [1]
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Welcome kubefetch auto deploy
+      debug:
+        msg:
+          - "*****************************************************************"
+          - " kubefetch auto deploy, version {{lookup('file', 'TVN/VERSION')}}"
+          - "*****************************************************************"
+    - name: Gather system time
+      setup:
+        filter: ansible_date_time
+    - name: Set start time
+      set_fact:
+        time_start: "{{ ansible_date_time.epoch }}"
+    - bebug: var=ansible_date_time.date
+    - bebug: var=ansible_date_time.time
+
+- name: Welcome Install System Init [2]
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Welcome Install System Init Phase
+      debug:
+        msg:
+          - "*****************************************************************"
+          - " Prepare (include site-init-hosts.yml)"
+          - "*****************************************************************"
+- include: site-init-hosts.yml
+
+- name: Welcome Install Docker [3]
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Welcome Install Docker Phase
+      debug:
+        msg:
+          - "*****************************************************************"
+          - " Prepare (include site-docker.yml)"
+          - "*****************************************************************"
+- include: site-docker.yml
+
+- name: Welcome Install kubefetch [4]
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Welcome Install kubefetch Phase
+      debug:
+        msg:
+          - "*****************************************************************"
+          - " Prepare (include site-kubefetch.yml)"
+          - "*****************************************************************"
+- include: site-kubefetch.yml

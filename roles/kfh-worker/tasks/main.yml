@@ -1,0 +1,69 @@
+- name: Copy Rpm
+  copy:
+  src: "{{ playbook_dir }}/ansible/kubeadm-1.21.0/{{ item }"
+  dest: "{{ target_dir }}/kubeadm/"
+  with items:
+    - 1364e820d82ad7143d78669927adc414d3e270d3d26d844e93eff639f7142e50-kubelet-1.21.0-0.x86_64.rpm
+    - 14bfe6e75a9efc8eca3f638eb22c7e2ce759c67f95b43b16fae4ebabde1549f3-cri-tools-1.13.0-0.x86_64.rpm
+    - conntrack-tools-1.4.4-7.el7.x86_64.rpm
+    - d625f039f4a82eca35f6a86169446af6886ed9e0dfb16763867066411c131084-kubectl-1.21.0-0.x86_64.rpm
+    - db7cb5cb0b3f6875f54d10f92e625573988e3e91fd4fc5eef0b1876bb18604ad-kubernetes-cni-0.8.7-0.x86_64.rpm
+    - dc4816b13248589685ee9f950593256d08a3e6d4e419239faf7a83fe686f641c-kubeadm-1.21.0-0.x86_64.rpm
+    - libnetfilter_cthelper-1.0.0-11.el7.x86_64.rpm
+    - libnetfilter_cttimeout-1.0.0-7.el7.x86_64.rpm
+    - libnetfilter_queue-1.0.2-2.el7_2.x86_64.rpm
+    - socat-1.7.3.2-2.el7.x86_64.rpm
+
+- name: Install kubeadm
+  shell: rpm -ivh --replacefiles --replacepkgs --nodeps {{ target_dir }}/kubeadm/*
+  register: kubeadm_result
+
+- debug: msg="{{ kubeadm_result.stdout_lines }}"
+
+- name: Start kubelet and set boot up
+  systemd:
+  name: kubelet.service
+  daemon_reload: yes
+  state: started
+  enabled: yes
+
+# kubeadm-worker-images.tar
+# calico/cni:v3.17.3
+# calico/typha:v3.17.3
+# registry.aliyuncs.com/google_containers/pause:3.4.1
+# registry.aliyuncs.com/google_containers/kube-proxy:v1.21.0
+# calico/node:v3.17.3
+# calico/pod2daemon-flexvol:v3.17.3
+- name: Copy images kubeadm-worker
+  copy:
+    src: "{{ playbook_dir }}/ansible/kubeadm-1.21.0-images/kubeadm-worker-images.tar"
+    dest: "{{ target_dir }}/kubeadm-worker/"
+
+- name: Load images
+  command: docker load -i {{ target_dir }}/kubeadm-worker/kubeadm-worker-images.tar
+  register: load_image_result
+
+- debug: msg="{{ load_image_result.stdout_lines }}"
+
+- name: Generate command
+  block:
+    - name: Read token and ca crt hash from file
+      include_vars:
+        file: "{{ password_filename }}"
+    - name: Generate join command
+      set_fact:
+        join_command: >
+          kubeadm join {{ groups['pass-api'][0]}}:6443
+          --token {{ k8s-token }}
+          --discovery-token-ca-cert-hash sha256:{{ ca_cert_hash }}
+
+- debug:
+    var: join_command
+
+- name: Install k8s with tde join
+  become: yes
+  shell: "{{ join_command }}"
+  register: kfh_result
+
+- debug:
+  msg: "{{ kfh_result.stdout_lines }}"

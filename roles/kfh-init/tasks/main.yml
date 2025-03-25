@@ -1,0 +1,166 @@
+# socat-l.7.3.2.2.el7
+# libnetfilter_queue-1.0.2-2.el7_2
+# libnetfilter_cttimeout.1.0.0-7.el7
+# libnetfilter_cthelper-1.0.0-11.el7
+# conntrack-tools-1.4.4-7.el7
+# kubernetes-cni-0.8.7-0
+# kubelet.1.21.0-0
+# kubectl-1.21.0-0
+# cri-tools-1.13.0-0
+# kubeadm-1.21.0.0-0
+- name: Install kubeadm
+  shell: rpm -ivh --replacefiles --replacepkgs {{ playbook_dir }}/ansible/kubeadm-1.21.0/*.rpm
+  register: kubeadm_result
+
+- bebug: msg="{{ kubeadm_result.stdout_lines }}"
+
+- name: Start kubelet and set boot up
+  systemd:
+    name: kubelet.service
+    daemon_reload: yes
+    state: started
+    enalbed: yes
+
+- name: Check dir
+  file:
+    path: "{{ target_dir }}/kubefetch"
+    state: directory
+    recurse: yes
+
+- name: Prepare the Profile for init-file
+  template:
+    src: "templates/{{ item }}.j2"
+    dest: "{{ target_dir }}/kubefetch/{{ item }}"
+    force: yes
+  with_items:
+    - init.yaml
+
+# kubeadm-images.tar
+# calico/pod2daemon-flexvol:v3.17.3
+# calico/typha:v3.17.3
+# registry.aliyuncs.com/google_containers/pause:3.4.1
+# registry.aliyuncs.com/google_containers/etcd:3.4.13-0
+# registry.aliyuncs.com/google_containers/kube-apiserver:v1.21.0
+# registry.aliyuncs.com/google_containers/kube-proxy:v1.21.0
+# registry.aliyuncs.com/google_containers/kube-scheduler:v1.21.0
+# calico/cni:v3.17.3
+# calico/kube-controllers:v3.17.3
+# registry.aliyuncs.com/google_containers/coredns/coredns:v1.8.0
+# registry.aliyuncs.com/google_containers/kube-controller-manager:v1.21.0
+# quay.io/tigera/operator:v1.13.7
+# calico/node:v3.17.3
+- name: Load images
+  command: docker load -i {{ playbook_dir }}/ansible/kubeadm-1.21.0-images/kubeadm-images.tar
+  register: load_image_result
+
+- debug: msg="{{ load_image_result.stdout_lines }}"
+
+- name: ready init configure
+  set_fact:
+    init_command: kubeadm init --config={{ target_dir }}/kubefetch/init.yaml --upload-certs
+- debug:
+    var: init_command
+
+#
+- name: Install K8S with init
+  become: yes
+  shell: "{{ init_command }}"
+  register: kubefetch_result
+
+- debug:
+    msg: "{{ kubefetch_result.stdout_lines }}"
+
+#
+- name: Configure command parameters from root
+  blockinfile:
+    path: ~/.bashrc
+    block: export KUBECONFIG=/etc/kubernetes/admin.conf
+
+- name: To take effect
+  shell: source ~/.bashrc
+
+- name: Configure and use Kubectl
+  file:
+    path: $HOME/.kube
+    state: directory
+
+- name: Copy master1 admin.conf
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: $HOME/.kube/config
+
+- name: To start using your cluster, you need to run the following as a regular user
+  shell: chown $(id -u):$(id -g) $HOME/.kube/config
+  ignore_errors:  yes
+
+- name: check master is running
+  uri:
+    url: "https://{{ ipv4_address }}:6443/healthz"
+    status_code: 200
+    validate_certs: false
+  register: result
+  until: result.status == 200
+  retries: 30
+  delay: 10
+  delegate_to: localhost
+
+- name: Check dirs Calico-operator
+  file: 
+    path: "{{ target_dir }}/calico-operator"
+    state: directory
+    recurse: yes
+
+- name: templates calico-operator
+  template:
+    src: "templates/{{ item }}.j2"
+    dest: "{{ target_dir}}/calico-operator/{{ item }}"
+    force: yes
+  with_items:
+    - custom-resources.yaml
+    - tigera-operator.yaml
+
+- name: Create from files
+  command: kubectl apply -f {{ target_dir }}/calico-operator/{{ item }}
+  with_items:
+    - custom-resources.yaml
+    - tigera-operator.yaml 
+
+- name: Wait for calico-operator to Start
+  shell: kubectl get pod -n "{{ pass_tigera_namespace }}" | grep -e "tigera-operator" | grep -e "Running"
+  register: result
+  until: result.rc == 0
+  retries: 30
+  delay: 10
+
+- name: Wait for Master Ready
+  shell: kubectl get node | grep -e "master" | grep -e "Ready"
+  until: result.rc == 0
+  retries: 30
+  delay: 10 
+
+- name: Get token for join
+  block:
+    - name: Get k8s token
+      shell: kubeadm token list | grep -e "99y" | awk "{print $1}"
+      register: k8s_token_result
+
+    - name: Save k8s token
+      local_action:
+        module: lineinfile
+        path: "{{ password_filename }}"
+        regexp: '^k8s_token:'
+        line: "k8s_token: {{ k8s_token_result.stdout }}"
+        create: yes
+
+    #      sudo openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | sudo openssl rsa -pubin -outform der | sudo openssl dgst -sha256 -hex
+    - name: Get k8s CA cert hash
+      shell: openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex
+      register: ca_cert_hash_result
+    
+    - name: Save k8s CA cert hash
+      local_action:
+        module: lineinfile
+        path: "{{ password_filename }}"
+        regexp: '^ca_cert_hash:'
+        line: "ca_cert_hash: {{ ca_cert_hash_result.stdout }}"
+        create: yes

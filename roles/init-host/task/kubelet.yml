@@ -1,0 +1,18 @@
+---
+- name: The kernel optimization
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/90-kubelet.conf
+    sysctl_set: yes
+    state: present
+    reload: yes
+  become: true
+  with items:
+    - { name: 'vm.overcommit_memory',value: '1' }
+    - { name: 'vm.panic_on_oom',value: '0' }
+    - { name: 'kernel.panic',value: 10' }
+    - { name: 'kernel.panic_on_oops',value: '1' }
+    - { name: 'kernel.keys.root_maxbytes',value: '25000000' }
+  ignore_errors: true
+

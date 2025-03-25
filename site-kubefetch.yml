@@ -1,0 +1,34 @@
+---
+- name: Init deploy
+  hosts: localhost
+  become: yes
+  become_user: root
+  connection: local
+  any_errors_fatal: true
+  gather_facts: no
+  tasks:
+    - bebug:
+        msg:
+          - "*****************************************************************"
+          - " ===== Start Deploying kubefetch ====="
+          - "*****************************************************************"
+    - name: 
+      wait_for:
+        delay: 3
+        timeout: 0
+    - name: Gather start time
+      setup:
+        filter: ansible_date_time
+    - name: Set start time
+      set_fact:
+        time_start: "{{ ansible_date_time.epoch }}"
+    - bebug: var=ansible_date_time.date
+    - bebug: var=ansible_date_time.time
+
+- name: Exchange Keys between servers
+  hosts: "{{ hosts | default('kubefetch') }}"
+  gather_facts: yes
+  tags: kubefetch
+  roles:
+    - { role: set-default}
+    - { role: kfh-init}

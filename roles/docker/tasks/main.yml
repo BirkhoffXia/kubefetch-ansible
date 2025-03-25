@@ -1,0 +1,83 @@
+---
+- name: Get your docker-ce if Install
+  command: docker -v
+  register: result
+  failed_when:
+    - result.rc == 0 
+    - '"stop playbook and uninstall your docker" not in result.stdout'
+
+- name: Copy rpm
+  copy:
+    src: "{{ playbook_dir }}/ansible/docker-ce-20.10.5/{{ item }}
+    dest: "{{ target_dir }}/docker/"
+  with_items:
+    - audit-libs-python-2.8.5-4.el7.x86_64.rpm
+    - checkpolicy-2.5-8.el7.x86_64.rpm
+    - containerd.io-1.4.4-3.1.el7.x86_64.rpm
+    - container-selinux-2.119.2-1.911c772.el7_8.noarch.rpm
+    - docker-ce-20.10.5-3.el7.x86_64.rpm
+    - docker-ce-cli-20.10.5-3.el7.x86_64.rpm
+    - docker-ce-rootless-extras-20.10.5-3.el7.x86_64.rpm
+    - fuse3-libs-3.6.1-4.el7.x86_64.rpm
+    - fuse-overlayfs-0.7.2-6.el7_8.x86_64.rpm
+    - libcgroup-0.41-21.e17.x86_64.rpm
+    - libsemanage-python-2.5-14.el7.x86_64.rpm
+    - policycoreutils-python-2.5-34.el7.x86_64.rpm
+    - python-IPy-0.75-6.el7.noarch.rpm
+    - setools-libs-3.3.8-4.e17.x86_64.rpm
+    - slirp4netns-0.4.3-4.e17_8.x86_64.rpm
+
+- name: Install docker-ce
+  shell: rpm -ivh --replacefiles --replacepkgs --nodeps {{ target_dir }}/docker/*
+  register: docker_result 
+
+- debug: msg="{{ docker_result.stdout_lines }}"
+
+- name: Create /etc/docker/directory
+  file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Install docker
+  systemd:
+    name: docker.service
+    state: started
+
+- name: Delete the existing docker0 interface
+  become: yes
+  shell: ip link del docker0
+  ignore_errors: yes
+
+- name: To prevent docker iptables Forward chain
+  lineinfile:
+    dest: /usr/lib/systemd/system/docker.service
+    insertbefore: "TimeoutSec=0(.*)"
+    line: "ExecStartPost=/usr/sbin/iptables -P FORWARD ACCEPT"
+
+- name: increase limitnofile to 15 million
+  lineinfile:
+    path: /usr/lib/systemd/system/docker.service
+    regexp: '^LimitNOFILE'
+    line: 'LimitNOFILE=1500000'
+
+-  name: Delete "-H fd://" option
+   become: yes
+   shell: sed -i's/-H fd:\/\///' /usr/lib/systemd/system/docker.service
+   when: ansible_os_family=="RedHat"
+
+- name: Copy daemon.json to /etc/docker/daemon.json
+  become: yes
+  template:
+    src: daemon.json
+    dest: /etc/docker/daemon.json
+    mode: 0644
+
+- name: Restart the Docker configuration and set the boot up
+  systemd:
+    name: docker.service
+    daemon_reload: yes
+    state: restarted
+    enabled: yes

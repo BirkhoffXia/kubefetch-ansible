@@ -1,0 +1,167 @@
+---
+- name: Get your operating system version
+  shell: cat /etc/redhat-release | awk '{print $1"."$4}' | grep -w {{centos_version}}
+  register: result
+  failed_when:
+    - result.rc != 0
+    - '"CentOs Image version Do not confirm to the" not in result.stdout'
+
+- name: Get your operating /etc/hosts lines
+  shell: cat /etc/hosts | wc -l | grep -w 2
+  register: result
+  failed_when:
+    - result.rc == 0
+    - '"Make sure /etc/hosts/ is filled in for all nodes" not in reslut.stdout'
+
+- name: Temporaily close swap
+  raw: swapoff -a
+
+- name: backup fstab
+  raw: yes | cp /etc/fstab /etc/fstab_bak
+
+- name: Permanently close swap
+  lineinfile:
+    dest: /etc/fstab
+    regexp: ".swap"
+    line: ""
+
+- include_tasks: sysctl.yml
+- include_tasks: kubelet.yml
+
+- name: Set timezone to Asia/Shanghai
+  timezone:
+    name: Asia/Shanghai
+
+- name: Increase system OS limit nofile
+  pam_limits:
+    domain: '*'
+    limit_type: "{{ item }}"
+    limit_item: nofile
+    value: 65535
+  with_items:
+    - hard
+    - soft
+
+- name: disable useless service
+  service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: no
+  become: true
+  with_items:
+    - firewalld
+    - postfix
+    - chronyd
+  failed_when: false
+
+- name: Copy rpm
+  copy:
+    src: "{{ playbook_dir }}/ansible/rely/{{ item }}"
+    dest: "{{ target_dir }}/rely/"
+    with_items:
+      - ipvsadmin-1.27-8.el7.x86_64.rpm
+      - ipset-7.1-1.el7.x86_64.rpm
+      - chrony-3.4-1.el7.x86_64.rpm
+
+- name: Install ipvsadm ipset
+  shell: rpm -ivh --replacefiles --replacepkgs --nodeps {{ target_dir }}/rely/"{{ item }}"
+  with items:
+    - ipvsadm-1.27-8.el7.x86_64.rpm
+    - ipset-7.1-1.el7.x86_64.rpm
+
+- name: Uninstall chrony ready
+  raw: rpm -qa | grep chrony
+  register: rpm_check
+
+- name: Uninstall and reinstall the new Chrony
+  raw: rpm -e --nodeps chrony
+  debug: msg="rpm packages is install but is old package and now The original pkg has been unloaded'
+  when: rpm_check.rc == 0
+
+- name: Install the new Chrony
+  raw: rpm -i {{ target_dir }}/rely/chrony-3.4-1.el7.x86_64.rpm
+  register: rpm_check
+  debug: msg="If the above error occurs, you have installed it once. Please don't do it again. It is recommende"
+  when: rpm_check.rc != 0
+
+- name: Modify the default configuration
+  replace:
+    path: /etc/chrony.conf
+    regexp: "^server"
+    replace: "#server"
+
+- name: Add a time synchronization configuration
+  lineinfile:
+    dest: /etc/chrony.conf
+    line: |
+           server 0.asia.pool.ntp.org iburst
+           server 1.asia.pool.ntp.org iburst
+           server 2.asia.pool.ntp.org iburst
+           server 3.asia.pool.ntp.org iburst
+
+- name: Set the time zone
+  raw: timedatectl set-timezone Asia/Shanghai
+
+- name: Restart the service and set up boot
+  systemd:
+    state: restarted
+    enabled: yes
+    name: chronyd.service
+
+- name: Verify current time
+  shell: timedatectl | grep -w Local
+  register: time_date
+  debug: msg={{ time_date.stdout_lines }}
+
+- name: Configuration ipvs
+  template:
+    src: "{{ item }}.j2"
+    dest: "/etc/sysconfig/modules/{{ item }}"
+    force: yes
+    with_items:
+    - ipvs.modules
+
+- name: Permission assignment
+  file: path=/etc/sysconfig/modules/ipvs.modules mode=0755
+
+- name: 0pen the IPVS module
+  shell: |
+    bash /etc/sysconfig/modules/ipvs.modules && \
+    lsmod | grep -e ip_vs -e nf_conntrack_ipv4
+  register: lsmod
+
+- debug: msg="{{ lsmod.stdout_lines | select('match','^(nf_de)') | list }}"
+
+- name: turn off selinux from config file
+  lineinfile:
+    path: /etc/selinux/config
+    regexp: '^SELINUX='
+    line: 'SELINUX=disabled'
+  when: ansible_os_family == "RedHat'
+
+- name: turn off selinux by setenforce 0
+  command: setenforce 
+  when: ansible_os_family == "RedHat" 
+  failed_when: false
+
+- name: config logrotate.conf
+  lineinfile:
+    path: /etc/logrotate.conf
+    regexp: 'rotate 4'
+    line: 'rotate 1'
+    when: ansible_os_family == "RedHat
+
+- name: enable logrotate compress for RH OS
+  replace:
+  path: /etc/logrotate.conf
+  regexp: '^#(.*compress.*)
+  replace: '\1'
+  when: ansible_os_family == "RedHat"
+
+- name: delete existed machine-id whenever exist
+  file:
+    path: /etc/machine-id
+    tate: absent
+
+- name: generate new machineid
+  shell: systemd-machine-id-setup
