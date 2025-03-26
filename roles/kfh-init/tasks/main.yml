@@ -8,12 +8,14 @@
 # kubectl-1.21.0-0
 # cri-tools-1.13.0-0
 # kubeadm-1.21.0.0-0
+# Shell register模块
 - name: Install kubeadm
   shell: rpm -ivh --replacefiles --replacepkgs {{ playbook_dir }}/ansible/kubeadm-1.21.0/*.rpm
   register: kubeadm_result
 
 - bebug: msg="{{ kubeadm_result.stdout_lines }}"
 
+# systemd模块
 - name: Start kubelet and set boot up
   systemd:
     name: kubelet.service
@@ -21,13 +23,17 @@
     state: started
     enalbed: yes
 
+# 
 - name: Check dir
   file:
     path: "{{ target_dir }}/kubefetch"
+    # 确保路径是一个目录
     state: directory
-    recurse: yes
+    # 描述：递归设置目录的权限和所有权
+    recurse: yes 
 
 - name: Prepare the Profile for init-file
+# 用于将模板化的文件部署到远程主机。通过使用template模块，Ansible可以在目标主机上生成配置文件，并在配置文件发生变化时触发服务的重启。
   template:
     src: "templates/{{ item }}.j2"
     dest: "{{ target_dir }}/kubefetch/{{ item }}"
@@ -63,15 +69,17 @@
 
 #
 - name: Install K8S with init
+# 是否进行提权操作。如果需要，设置为yes
   become: yes
   shell: "{{ init_command }}"
   register: kubefetch_result
 
-- debug:
+- debug: 
     msg: "{{ kubefetch_result.stdout_lines }}"
 
 #
 - name: Configure command parameters from root
+  # 在指定文件中插入一段文本，这段文本被标记过的、这个记号以便在以后的操作可以通过标记找到这段文本、修改或者删除它
   blockinfile:
     path: ~/.bashrc
     block: export KUBECONFIG=/etc/kubernetes/admin.conf

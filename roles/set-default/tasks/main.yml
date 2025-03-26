@@ -1,13 +1,20 @@
+# Setup 模块
+# 通过 filter 参数收集特定类型的信息（例如，只收集与网络接口相关的信息）
 - name: Gather system info 
   setup:
     filter: ansible_*
 
 # 获取 ansible 自身变量
+# set_fact: 定义和赋值变量,在后续play中类似于主机facts信息，可以被引用
 - name: Set common vars
   set_facts:
-    ipv4_address: "{% if 'address' in ansible_default_ipv4 %}{{ansible_default_ipv4.address}}{% elsif 'ansible_'~def}"
-    ipv4_interface: "{% if 'interface' in ansible_default_ipv4 %}{{ansible_default_ipv4.interface}}{% elsif 'ansible_'~def}"
-    ipv4_hostname: "{{hostvars[intertory_hostname]['ansible_hostname']}}"
+    #ipv4_address: "{% if 'address' in ansible_default_ipv4 %}{{ansible_default_ipv4.address}}{% elsif 'ansible_'~def}"
+    ipv4_address: {{ ansible_default_ipv4.address }}
+
+#   ipv4_interface: "{% if 'interface' in ansible_default_ipv4 %}{{ansible_default_ipv4.interface}}{% elsif 'ansible_'~def}"
+    ipv4_interface: {{ ansible_default_ipv4.interface }}
+#   获取主机名称 hostvars[intertory_hostname]会有很多参数
+    ipv4_hostname: "{{ hostvars[intertory_hostname]['ansible_hostname'] }}"
     centos_version: "CentOS.7.9.2009"
     pass_tigera_namespace: "tiger-operator"
     password_filename: password.yaml
