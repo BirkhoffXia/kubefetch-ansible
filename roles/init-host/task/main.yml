@@ -32,6 +32,7 @@
   timezone:
     name: Asia/Shanghai
 
+# 功能: 管理资源限制
 - name: Increase system OS limit nofile
   pam_limits:
     domain: '*'
@@ -70,6 +71,7 @@
     - ipset-7.1-1.el7.x86_64.rpm
 
 - name: Uninstall chrony ready
+  # 允许我们在远程主机上直接执行任意的命令
   raw: rpm -qa | grep chrony
   register: rpm_check
 
@@ -81,7 +83,7 @@
 - name: Install the new Chrony
   raw: rpm -i {{ target_dir }}/rely/chrony-3.4-1.el7.x86_64.rpm
   register: rpm_check
-  debug: msg="If the above error occurs, you have installed it once. Please don't do it again. It is recommende"
+  debug: msg="If the above error occurs, you have installed it once. Please don't do it again. It is recommand"
   when: rpm_check.rc != 0
 
 - name: Modify the default configuration

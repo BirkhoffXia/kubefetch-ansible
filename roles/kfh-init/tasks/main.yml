@@ -102,6 +102,7 @@
   ignore_errors:  yes
 
 - name: check master is running
+  # 用于发送HTTP、HTTPS、FTP等请求的模块，可以用于获取网页内容、下载文件、上传文件等
   uri:
     url: "https://{{ ipv4_address }}:6443/healthz"
     status_code: 200
@@ -146,6 +147,7 @@
   retries: 30
   delay: 10 
 
+# 用于将多个任务组织在一起，形成一个逻辑块，方便管理和执行
 - name: Get token for join
   block:
     - name: Get k8s token
@@ -153,7 +155,10 @@
       register: k8s_token_result
 
     - name: Save k8s token
+    # local_action实际上是delegate_to: localhost的语法糖
+    # 用于在控制节点(即运行 Ansible 的机器)上执行任务,而不是在远程主机上执行
       local_action:
+      # lineinfile 模块是用于在文件中搜索指定行，如果找到了该行则修改或添加内容，如果没有找到则添加一行新内容
         module: lineinfile
         path: "{{ password_filename }}"
         regexp: '^k8s_token:'
