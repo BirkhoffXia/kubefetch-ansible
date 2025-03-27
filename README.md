@@ -15,3 +15,18 @@ site-all.yml
 	role: set-default  
   	role: kfh-init
 ```
+
+# 使用到的模块
+template
+setup
+shell
+command
+systemd
+file
+blockinfile
+uri
+until
+block
+	local_action
+pam_limits
+replace
